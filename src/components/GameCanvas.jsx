@@ -1,23 +1,26 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
+import { createStarfield } from '../game/starfield'
 
 export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver }) {
-    const mountRef = useRef(null)      // referência ao div que vai conter o canvas
-    const threeRef = useRef({})        // guarda tudo do Three.js sem causar re-render
+    const mountRef = useRef(null)
+    const threeRef = useRef({})
 
     useEffect(() => {
         const mount = mountRef.current
         const three = threeRef.current
 
-        // ---- setup ----
+        // ---- 1. renderer ----
         three.renderer = new THREE.WebGLRenderer({ antialias: true })
         three.renderer.setSize(window.innerWidth, window.innerHeight)
         three.renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
         mount.appendChild(three.renderer.domElement)
 
+        // ---- 2. scene ----
         three.scene = new THREE.Scene()
         three.scene.fog = new THREE.FogExp2(0x05010f, 0.0055)
 
+        // ---- 3. camera ----
         three.camera = new THREE.PerspectiveCamera(
             72,
             window.innerWidth / window.innerHeight,
@@ -27,13 +30,17 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
         three.camera.position.set(0, 4, 14)
         three.camera.lookAt(0, 0, 0)
 
-        // ---- luz ----
+        // ---- 4. luz ----
         three.scene.add(new THREE.AmbientLight(0x404080, 0.45))
         const sun = new THREE.DirectionalLight(0xffeacc, 1.4)
         sun.position.set(15, 25, 12)
         three.scene.add(sun)
 
-        // ---- loop básico ----
+        // ---- 5. starfield (APÓS a scene existir) ----
+        const starfield = createStarfield()
+        three.scene.add(starfield.stars)
+
+        // ---- 6. loop ----
         let animId
         let last = performance.now()
 
@@ -43,12 +50,15 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
             const dt = Math.min((now - last) / 16.67, 3)
             last = now
 
+            starfield.stars.rotation.y += 0.0002 * dt
+            starfield.stars.rotation.x += 0.00007 * dt
+
             three.renderer.render(three.scene, three.camera)
         }
 
         loop()
 
-        // ---- resize ----
+        // ---- 7. resize ----
         function onResize() {
             three.camera.aspect = window.innerWidth / window.innerHeight
             three.camera.updateProjectionMatrix()
@@ -56,15 +66,16 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
         }
         window.addEventListener('resize', onResize)
 
-        // ---- cleanup (lembra do que aprendemos?) ----
+        // ---- 8. cleanup ----
         return () => {
-            cancelAnimationFrame(animId)        // para o loop
+            cancelAnimationFrame(animId)
             window.removeEventListener('resize', onResize)
-            three.renderer.dispose()            // libera GPU
+            starfield.dispose()
+            three.renderer.dispose()
             mount.removeChild(three.renderer.domElement)
         }
 
-    }, []) // [] = roda uma vez
+    }, [])
 
     return (
         <div
