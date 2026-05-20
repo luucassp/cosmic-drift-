@@ -6,8 +6,10 @@ const laserGeo = new THREE.CylinderGeometry(0.07, 0.07, 1.6, 6)
 
 let lastShot = 0
 
+// retorna true se atirou, false se ainda em cooldown
+// o chamador usa o retorno para decidir se toca o som do laser
 export function tryShoot(shipPosition, now, scene, laserObjects) {
-    if (now - lastShot < 130) return  // cooldown — máx 1 tiro a cada 130ms
+    if (now - lastShot < 130) return false
 
     lastShot = now
 
@@ -22,6 +24,8 @@ export function tryShoot(shipPosition, now, scene, laserObjects) {
         scene.add(mesh)
         laserObjects.push(mesh)
     }
+
+    return true
 }
 
 export function disposeLasers(laserObjects, scene) {
@@ -33,8 +37,15 @@ export function disposeLasers(laserObjects, scene) {
     laserObjects.length = 0
 }
 
-// chamado uma única vez no cleanup final
+// chamado uma única vez no cleanup final (quando o componente desmonta)
 export function disposeLaserResources() {
     laserGeo.dispose()
     laserMat.dispose()
+}
+
+// reseta o cooldown entre partidas
+// necessário porque lastShot é variável de MÓDULO — sobrevive entre sessões de jogo
+// sem isso, o jogador começa o novo jogo ainda em cooldown se morreu logo após atirar
+export function resetLaserCooldown() {
+    lastShot = 0
 }

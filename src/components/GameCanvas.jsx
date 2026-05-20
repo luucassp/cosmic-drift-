@@ -3,10 +3,14 @@ import * as THREE from 'three'
 import { createStarfield } from '../game/starfield'
 import { createShip } from '../game/ship'
 import { createAsteroid } from '../game/asteroids'
-import { tryShoot, disposeLasers, disposeLaserResources } from '../game/lasers'
+import { tryShoot, disposeLasers, disposeLaserResources, resetLaserCooldown } from '../game/lasers'
 import { explodeAt, updateExplosions, disposeExplosions } from '../game/explosion'
+import {
+    resumeAudio, playLaser, playExplosion, playShipHit,
+    playWaveUp, playGameOver, disposeAudio,
+} from '../game/audio'
 
-export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChange }) {
+export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChange, onMenu, onRestart }) {
     const mountRef = useRef(null)
     const threeRef = useRef({})
     const gameStateRef = useRef(gameState)
@@ -66,6 +70,12 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
         function onKeyDown(e) {
             three.keys[e.code] = true
             if (e.code === 'Space') e.preventDefault()
+            // cria/retoma o AudioContext — browser exige gesto do usuário
+            resumeAudio()
+            // Escape durante o jogo → volta ao menu
+            if (e.code === 'Escape' && gameStateRef.current.running) onMenu()
+            // R reinicia direto sem passar pelo menu
+            if (e.code === 'KeyR' && gameStateRef.current.running) onRestart()
         }
         function onKeyUp(e) { three.keys[e.code] = false }
         window.addEventListener('keydown', onKeyDown)
@@ -75,13 +85,72 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
         let animId
         let last = performance.now()
 
+        // guarda a sessão atual para detectar quando uma nova partida começa
+        // usar session em vez de prevRunning permite resetar mesmo com running já true
+        // (ex: jogador pressiona R para reiniciar sem passar pelo menu)
+        let currentSession = gameStateRef.current.session
+        let wasGameOver = false  // detecta transição para game over e toca o som uma vez
+
+        // reseta tudo que carrega estado entre partidas
+        // chamado no início de cada nova sessão (início + reinício)
+        function resetGame() {
+            // remove e libera todos os asteroides ainda na cena
+            for (const a of asteroidObjects) {
+                three.scene.remove(a.mesh)
+                a.dispose()            // libera geo + mat da GPU
+            }
+            asteroidObjects.length = 0 // esvazia o array sem realocar
+
+            // remove lasers (geo/mat são compartilhados, só removemos da cena)
+            disposeLasers(laserObjects, three.scene)
+
+            // remove partículas de explosão ainda animando
+            disposeExplosions(explosionObjects, three.scene)
+
+            // reseta variáveis de progressão do loop
+            wave = 1
+            kills = 0
+            goal = 6
+            spawnTimer = 0
+            shake = 0
+
+            // volta a nave para o centro da tela
+            ship.position.set(0, 0, 0)
+            ship.rotation.set(0, 0, 0)
+
+            // volta câmera para posição inicial (pode estar deslocada pelo shake)
+            three.camera.position.set(0, 4, 14)
+
+            // reseta cooldown do laser — lastShot vive no módulo lasers.js,
+            // por isso precisamos de uma função exportada para acessá-lo
+            resetLaserCooldown()
+
+            // atualiza last para agora, evitando um dt gigante no primeiro frame
+            // (o jogador pode ter ficado minutos no menu antes de reiniciar)
+            last = performance.now()
+        }
+
         function loop() {
             animId = requestAnimationFrame(loop)
             const now = performance.now()
             const dt = Math.min((now - last) / 16.67, 3)
             last = now
 
-            const running = gameStateRef.current.running
+            const { running, session, gameOver } = gameStateRef.current
+
+            // session diferente = nova partida (funciona de menu E mid-game com R)
+            // este bloco roda UMA vez por partida, no primeiro frame após o clique
+            if (running && session !== currentSession) {
+                currentSession = session
+                wasGameOver = false
+                resetGame()
+            }
+
+            // detecta transição para game over e toca o som uma única vez
+            if (gameOver && !wasGameOver) {
+                wasGameOver = true
+                playGameOver()
+            }
 
             // estrelas (sempre)
             starfield.stars.rotation.y += 0.0002 * dt
@@ -115,8 +184,10 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
                 const pulse = 2.4 + Math.sin(now * 0.02) * 0.6
                 for (const e of engines) e.material.emissiveIntensity = pulse
 
-                // tiro
-                if (three.keys.Space) tryShoot(ship.position, now, three.scene, laserObjects)
+                // tiro — tryShoot retorna true só se o cooldown já passou
+                if (three.keys.Space && tryShoot(ship.position, now, three.scene, laserObjects)) {
+                    playLaser()
+                }
 
                 // spawn
                 spawnTimer -= dt
@@ -137,6 +208,7 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
                         const a = asteroidObjects[j]
                         if (l.position.distanceTo(a.mesh.position) < a.mesh.userData.r + 0.45) {
                             explodeAt(a.mesh.position, three.scene, explosionObjects, 0xffcc44, 70)
+                            playExplosion(a.mesh.userData.r)  // tamanho do asteroide afeta o boom
                             three.scene.remove(a.mesh)
                             a.dispose()
                             asteroidObjects.splice(j, 1)
@@ -149,6 +221,7 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
                                 kills = 0
                                 goal = 6 + wave * 2
                                 onWaveChange(wave)
+                                playWaveUp()
                             }
 
                             consumed = true
@@ -175,6 +248,8 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
                     // colisão com nave
                     if (a.mesh.position.distanceTo(ship.position) < a.mesh.userData.r + 0.95) {
                         explodeAt(a.mesh.position, three.scene, explosionObjects, 0xff3322, 110)
+                        playShipHit()    // impacto grave
+                        playExplosion(a.mesh.userData.r)  // explosão do asteroide junto
                         three.scene.remove(a.mesh)
                         a.dispose()
                         asteroidObjects.splice(i, 1)
@@ -232,10 +307,12 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
             }
             starfield.dispose()
             disposeShip()
+            disposeAudio()
             three.renderer.dispose()
             mount.removeChild(three.renderer.domElement)
         }
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     return (

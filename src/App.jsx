@@ -9,13 +9,22 @@ const INITIAL_STATE = {
     wave: 1,
     running: false,
     gameOver: false,
+    // session é um contador que sobe a cada nova partida
+    // o loop usa ele para detectar "nova partida" mesmo se running já era true
+    session: 0,
 }
 
 export default function App() {
     const [gameState, setGameState] = useState(INITIAL_STATE)
 
+    // incrementa session para que o loop detecte o reinício mesmo mid-game
     const startGame = useCallback(() => {
-        setGameState({ ...INITIAL_STATE, running: true })
+        setGameState(prev => ({ ...INITIAL_STATE, running: true, session: prev.session + 1 }))
+    }, [])
+
+    // volta ao menu sem incrementar session — o loop limpa na próxima partida
+    const goToMenu = useCallback(() => {
+        setGameState(prev => ({ ...INITIAL_STATE, session: prev.session }))
     }, [])
 
     const updateScore = useCallback((points) => {
@@ -45,6 +54,8 @@ export default function App() {
                 onScore={updateScore}
                 onLoseLife={loseLife}
                 onWaveChange={updateWave}
+                onMenu={goToMenu}
+                onRestart={startGame}
             />
             <HUD
                 score={gameState.score}
