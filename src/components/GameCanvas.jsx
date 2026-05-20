@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { createStarfield } from '../game/starfield'
 import { createShip } from '../game/ship'
+import { createAsteroid } from '../game/asteroids'
 
 export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver }) {
     const mountRef = useRef(null)
@@ -45,7 +46,14 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
         const { ship, engines, dispose: disposeShip } = createShip()
         three.scene.add(ship)
 
-        // ---- 7. input (fora do loop!) ----
+        // ---- 7. asteroides ----
+        const asteroidObjects = []
+        let spawnTimer = 0
+        let wave = 1
+        let kills = 0
+        let goal = 6
+
+        // ---- 8. input ----
         three.keys = Object.create(null)
 
         function onKeyDown(e) {
@@ -58,7 +66,7 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
         window.addEventListener('keydown', onKeyDown)
         window.addEventListener('keyup', onKeyUp)
 
-        // ---- 8. loop ----
+        // ---- 9. loop ----
         let animId
         let last = performance.now()
 
@@ -99,13 +107,39 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
             const pulse = 2.4 + Math.sin(now * 0.02) * 0.6
             for (const e of engines) e.material.emissiveIntensity = pulse
 
+            // spawn
+            spawnTimer -= dt
+            if (spawnTimer <= 0) {
+                const a = createAsteroid(wave)
+                three.scene.add(a.mesh)
+                asteroidObjects.push(a)
+                spawnTimer = Math.max(8, 38 - wave * 3)
+            }
+
+            // atualiza asteroides
+            for (let i = asteroidObjects.length - 1; i >= 0; i--) {
+                const a = asteroidObjects[i]
+                a.mesh.position.x += a.mesh.userData.vel.x * dt
+                a.mesh.position.y += a.mesh.userData.vel.y * dt
+                a.mesh.position.z += a.mesh.userData.vel.z * dt
+                a.mesh.rotation.x += a.mesh.userData.spin.x * dt
+                a.mesh.rotation.y += a.mesh.userData.spin.y * dt
+                a.mesh.rotation.z += a.mesh.userData.spin.z * dt
+
+                if (a.mesh.position.z > 24) {
+                    three.scene.remove(a.mesh)
+                    a.dispose()
+                    asteroidObjects.splice(i, 1)
+                }
+            }
+
             // renderiza por último
             three.renderer.render(three.scene, three.camera)
         }
 
         loop()
 
-        // ---- 9. resize ----
+        // ---- 10. resize ----
         function onResize() {
             three.camera.aspect = window.innerWidth / window.innerHeight
             three.camera.updateProjectionMatrix()
@@ -113,12 +147,16 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
         }
         window.addEventListener('resize', onResize)
 
-        // ---- 10. cleanup ----
+        // ---- 11. cleanup (ordem inversa da criação) ----
         return () => {
             cancelAnimationFrame(animId)
             window.removeEventListener('resize', onResize)
             window.removeEventListener('keydown', onKeyDown)
             window.removeEventListener('keyup', onKeyUp)
+            for (const a of asteroidObjects) {
+                three.scene.remove(a.mesh)
+                a.dispose()
+            }
             starfield.dispose()
             disposeShip()
             three.renderer.dispose()
