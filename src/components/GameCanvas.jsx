@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { createStarfield } from '../game/starfield'
 import { createShip } from '../game/ship'
 import { createAsteroid } from '../game/asteroids'
+import { tryShoot, disposeLasers, disposeLaserResources } from '../game/lasers'
 
 export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver }) {
     const mountRef = useRef(null)
@@ -53,7 +54,10 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
         let kills = 0
         let goal = 6
 
-        // ---- 8. input ----
+        // ---- 8. lasers ----
+        const laserObjects = []
+
+        // ---- 9. input ----
         three.keys = Object.create(null)
 
         function onKeyDown(e) {
@@ -66,7 +70,7 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
         window.addEventListener('keydown', onKeyDown)
         window.addEventListener('keyup', onKeyUp)
 
-        // ---- 9. loop ----
+        // ---- 10. loop ----
         let animId
         let last = performance.now()
 
@@ -107,6 +111,48 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
             const pulse = 2.4 + Math.sin(now * 0.02) * 0.6
             for (const e of engines) e.material.emissiveIntensity = pulse
 
+            // tiro
+if (three.keys.Space) {
+    tryShoot(ship.position, now, three.scene, laserObjects)
+}
+
+// atualiza lasers
+for (let i = laserObjects.length - 1; i >= 0; i--) {
+    const l = laserObjects[i]
+    l.position.z -= 1.6 * dt
+
+    // colisão laser × asteroide
+    let consumed = false
+    for (let j = asteroidObjects.length - 1; j >= 0; j--) {
+        const a = asteroidObjects[j]
+        if (l.position.distanceTo(a.mesh.position) < a.mesh.userData.r + 0.45) {
+            // acertou!
+            three.scene.remove(a.mesh)
+            a.dispose()
+            asteroidObjects.splice(j, 1)
+
+            kills++
+            onScore(Math.round(10 * a.mesh.userData.r))
+
+            if (kills >= goal) {
+                wave++
+                kills = 0
+                goal = 6 + wave * 2
+            }
+
+            consumed = true
+            break
+        }
+    }
+
+    if (consumed || l.position.z < -160) {
+        three.scene.remove(l)
+        laserObjects.splice(i, 1)
+    }
+}
+
+
+
             // spawn
             spawnTimer -= dt
             if (spawnTimer <= 0) {
@@ -115,6 +161,9 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
                 asteroidObjects.push(a)
                 spawnTimer = Math.max(8, 38 - wave * 3)
             }
+
+
+
 
             // atualiza asteroides
             for (let i = asteroidObjects.length - 1; i >= 0; i--) {
@@ -153,6 +202,9 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onGameOver 
             window.removeEventListener('resize', onResize)
             window.removeEventListener('keydown', onKeyDown)
             window.removeEventListener('keyup', onKeyUp)
+            disposeLasers(laserObjects, three.scene)
+            disposeLaserResources()
+
             for (const a of asteroidObjects) {
                 three.scene.remove(a.mesh)
                 a.dispose()
