@@ -10,7 +10,9 @@ export function createStarfield() {
         pos[i * 3 + 0] = (Math.random() - 0.5) * 1200
         pos[i * 3 + 1] = (Math.random() - 0.5) * 1200
         pos[i * 3 + 2] = (Math.random() - 0.5) * 1200
-        tint.setHSL(Math.random(), 0.4, 0.65 + Math.random() * 0.3)
+        // lightness reduzido: 0.28–0.45 fica abaixo do bloom threshold (0.38 em espaço linear)
+        // estrelas continuam visíveis mas não ativam o bloom
+        tint.setHSL(Math.random(), 0.35, 0.28 + Math.random() * 0.17)
         col[i * 3 + 0] = tint.r
         col[i * 3 + 1] = tint.g
         col[i * 3 + 2] = tint.b

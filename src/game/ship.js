@@ -11,12 +11,12 @@ export function createShip() {
     const accent = new THREE.MeshStandardMaterial({
         color: 0x00ffff,
         emissive: 0x00d8ff,
-        emissiveIntensity: 2.2,
+        emissiveIntensity: 0.45,
     })
     const engine = new THREE.MeshStandardMaterial({
         color: 0xff66ff,
         emissive: 0xff33ff,
-        emissiveIntensity: 3.0,
+        emissiveIntensity: 0.9,  // valor inicial — loop vai sobrescrever com pulse
     })
 
     // corpo
@@ -60,7 +60,7 @@ export function createShip() {
     g.add(eR)
 
     // luz dos motores
-    const pl = new THREE.PointLight(0xff44ff, 1.2, 8)
+    const pl = new THREE.PointLight(0xff44ff, 0.18, 4)
     pl.position.set(0, 0, 1.4)
     g.add(pl)
 

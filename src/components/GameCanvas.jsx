@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { createStarfield } from '../game/starfield'
 import { createShip } from '../game/ship'
 import { createAsteroid } from '../game/asteroids'
@@ -40,6 +44,29 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
         )
         three.camera.position.set(0, 4, 14)
         three.camera.lookAt(0, 0, 0)
+
+        // ---- 3b. pós-processamento (bloom) ----
+        // precisa vir DEPOIS de scene e camera — o RenderPass guarda referência a eles
+        // se criado antes, scene/camera são undefined e a tela fica preta
+
+        // analogia: cadeia de filtros de câmara escura
+        // RenderPass   → "fotografa" a cena
+        // BloomPass    → detecta pixels brilhantes, borra e sobrepõe como halo
+        // OutputPass   → converte cor linear → sRGB (o que o monitor entende)
+
+        const renderPass = new RenderPass(three.scene, three.camera)
+        const bloomPass  = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            0.75,  // strength  — intensidade do halo (era 1.4, muito agressivo)
+            0.4,   // radius    — até onde o halo se espalha
+            0.38,  // threshold — brilho mínimo pra ativar (mais alto = mais seletivo)
+        )
+        const outputPass = new OutputPass()
+
+        three.composer = new EffectComposer(three.renderer)
+        three.composer.addPass(renderPass)
+        three.composer.addPass(bloomPass)
+        three.composer.addPass(outputPass)
 
         // ---- 4. luz ----
         three.scene.add(new THREE.AmbientLight(0x404080, 0.45))
@@ -180,8 +207,8 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
                 ship.rotation.z += (rollTarget  - ship.rotation.z) * 0.12 * dt
                 ship.rotation.x += (pitchTarget - ship.rotation.x) * 0.12 * dt
 
-                // pulso motores
-                const pulse = 2.4 + Math.sin(now * 0.02) * 0.6
+                // pulso motores — range 0.7–1.1, suave o suficiente pra não estourar bloom
+                const pulse = 0.9 + Math.sin(now * 0.02) * 0.2
                 for (const e of engines) e.material.emissiveIntensity = pulse
 
                 // tiro — tryShoot retorna true só se o cooldown já passou
@@ -279,7 +306,9 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
             // explosões (sempre, mesmo pausado)
             updateExplosions(explosionObjects, three.scene, dt)
 
-            three.renderer.render(three.scene, three.camera)
+            // composer.render() roda a cadeia completa: RenderPass → BloomPass → OutputPass
+            // substitui o three.renderer.render() que usávamos antes
+            three.composer.render()
         }
 
         loop()
@@ -289,6 +318,9 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
             three.camera.aspect = window.innerWidth / window.innerHeight
             three.camera.updateProjectionMatrix()
             three.renderer.setSize(window.innerWidth, window.innerHeight)
+            // o composer tem seus próprios buffers internos de textura —
+            // sem isso o bloom fica esticado ou borrado quando a janela muda de tamanho
+            three.composer.setSize(window.innerWidth, window.innerHeight)
         }
         window.addEventListener('resize', onResize)
 
@@ -308,6 +340,9 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
             starfield.dispose()
             disposeShip()
             disposeAudio()
+            // composer.dispose() libera os render targets (texturas internas de GPU)
+            // que o bloom usa para armazenar os passes intermediários
+            three.composer.dispose()
             three.renderer.dispose()
             mount.removeChild(three.renderer.domElement)
         }
