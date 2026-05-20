@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import HUD from './components/HUD'
 import GameCanvas from './components/GameCanvas'
-
+import Overlay from './components/Overlay'
 
 const INITIAL_STATE = {
     score: 0,
@@ -15,14 +15,15 @@ export default function App() {
     const [gameState, setGameState] = useState(INITIAL_STATE)
 
     const startGame = useCallback(() => {
-        setGameState({
-            ...INITIAL_STATE,
-            running: true,
-        })
+        setGameState({ ...INITIAL_STATE, running: true })
     }, [])
 
     const updateScore = useCallback((points) => {
         setGameState(prev => ({ ...prev, score: prev.score + points }))
+    }, [])
+
+    const updateWave = useCallback((wave) => {
+        setGameState(prev => ({ ...prev, wave }))
     }, [])
 
     const loseLife = useCallback(() => {
@@ -43,11 +44,16 @@ export default function App() {
                 gameState={gameState}
                 onScore={updateScore}
                 onLoseLife={loseLife}
+                onWaveChange={updateWave}
             />
             <HUD
                 score={gameState.score}
                 wave={gameState.wave}
                 lives={gameState.lives}
+            />
+            <Overlay
+                gameState={gameState}
+                onStart={startGame}
             />
         </>
     )
