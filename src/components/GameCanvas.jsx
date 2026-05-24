@@ -14,7 +14,7 @@ import {
     playWaveUp, playGameOver, disposeAudio,
 } from '../game/audio'
 
-export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChange, onMenu, onRestart }) {
+export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChange, onMenu, onRestart, mobileInput }) {
     const mountRef = useRef(null)
     const threeRef = useRef({})
     const gameStateRef = useRef(gameState)
@@ -105,8 +105,11 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
             if (e.code === 'KeyR' && gameStateRef.current.running) onRestart()
         }
         function onKeyUp(e) { three.keys[e.code] = false }
+        // em mobile o AudioContext precisa ser retomado no primeiro toque
+        function onFirstTouch() { resumeAudio() }
         window.addEventListener('keydown', onKeyDown)
         window.addEventListener('keyup', onKeyUp)
+        window.addEventListener('touchstart', onFirstTouch, { passive: true })
 
         // ---- 9. loop ----
         let animId
@@ -189,21 +192,27 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
             }
 
             if (running) {
-                // movimento
+                // movimento — teclado + joystick analógico mobile
                 const speed = 0.32 * dt
+                const mi = mobileInput ? mobileInput.current : { dx: 0, dy: 0, shooting: false }
+
                 if (three.keys.ArrowLeft  || three.keys.KeyA) ship.position.x -= speed
                 if (three.keys.ArrowRight || three.keys.KeyD) ship.position.x += speed
                 if (three.keys.ArrowUp    || three.keys.KeyW) ship.position.y += speed
                 if (three.keys.ArrowDown  || three.keys.KeyS) ship.position.y -= speed
+                ship.position.x += mi.dx * speed
+                ship.position.y += mi.dy * speed
 
                 ship.position.x = Math.max(-12, Math.min(12, ship.position.x))
                 ship.position.y = Math.max(-7,   Math.min(7,  ship.position.y))
 
-                // banking
+                // banking — combina teclado e joystick analógico
                 const rollTarget  = (three.keys.KeyA || three.keys.ArrowLeft  ? 0.5 : 0)
                                   - (three.keys.KeyD || three.keys.ArrowRight  ? 0.5 : 0)
+                                  - mi.dx * 0.5
                 const pitchTarget = (three.keys.KeyW || three.keys.ArrowUp    ? -0.18 : 0)
                                   + (three.keys.KeyS || three.keys.ArrowDown   ?  0.18 : 0)
+                                  - mi.dy * 0.18
                 ship.rotation.z += (rollTarget  - ship.rotation.z) * 0.12 * dt
                 ship.rotation.x += (pitchTarget - ship.rotation.x) * 0.12 * dt
 
@@ -211,8 +220,8 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
                 const pulse = 0.9 + Math.sin(now * 0.02) * 0.2
                 for (const e of engines) e.material.emissiveIntensity = pulse
 
-                // tiro — tryShoot retorna true só se o cooldown já passou
-                if (three.keys.Space && tryShoot(ship.position, now, three.scene, laserObjects)) {
+                // tiro — teclado ou botão mobile; tryShoot controla o cooldown
+                if ((three.keys.Space || mi.shooting) && tryShoot(ship.position, now, three.scene, laserObjects)) {
                     playLaser()
                 }
 
@@ -330,6 +339,7 @@ export default function GameCanvas({ gameState, onScore, onLoseLife, onWaveChang
             window.removeEventListener('resize', onResize)
             window.removeEventListener('keydown', onKeyDown)
             window.removeEventListener('keyup', onKeyUp)
+            window.removeEventListener('touchstart', onFirstTouch)
             disposeExplosions(explosionObjects, three.scene)
             disposeLasers(laserObjects, three.scene)
             disposeLaserResources()

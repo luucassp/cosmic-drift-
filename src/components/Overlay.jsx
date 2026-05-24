@@ -1,3 +1,6 @@
+const isMobile = typeof window !== 'undefined' &&
+    ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+
 export default function Overlay({ gameState, onStart }) {
     if (gameState.running) return null
 
@@ -6,9 +9,11 @@ export default function Overlay({ gameState, onStart }) {
 
     const lines = isGameOver
         ? [`SCORE FINAL: ${String(gameState.score).padStart(5, '0')}`, `WAVE: ${gameState.wave}`]
-        : ['WASD / SETAS PRA MOVER', 'ESPAÇO PRA ATIRAR']
+        : isMobile
+            ? ['ARRASTE (ESQ) PRA MOVER', 'BOTÃO FIRE (DIR) PRA ATIRAR']
+            : ['WASD / SETAS PRA MOVER', 'ESPAÇO PRA ATIRAR']
 
-    const hint = isGameOver ? 'clique pra reiniciar' : 'clique pra começar'
+    const hint = isGameOver ? 'toque pra reiniciar' : 'toque pra começar'
 
     return (
         <div onClick={onStart} style={{
@@ -26,7 +31,7 @@ export default function Overlay({ gameState, onStart }) {
         }}>
             <h1 style={{
                 margin: 0,
-                fontSize: 84,
+                fontSize: 'clamp(36px, 10vw, 84px)',
                 letterSpacing: 6,
                 background: 'linear-gradient(90deg, #00f0ff, #ff00cc)',
                 WebkitBackgroundClip: 'text',

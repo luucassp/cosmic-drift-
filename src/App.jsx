@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import HUD from './components/HUD'
 import GameCanvas from './components/GameCanvas'
 import Overlay from './components/Overlay'
+import MobileControls from './components/MobileControls'
 
 const INITIAL_STATE = {
     score: 0,
@@ -16,6 +17,7 @@ const INITIAL_STATE = {
 
 export default function App() {
     const [gameState, setGameState] = useState(INITIAL_STATE)
+    const mobileInputRef = useRef({ dx: 0, dy: 0, shooting: false })
 
     // incrementa session para que o loop detecte o reinício mesmo mid-game
     const startGame = useCallback(() => {
@@ -56,6 +58,7 @@ export default function App() {
                 onWaveChange={updateWave}
                 onMenu={goToMenu}
                 onRestart={startGame}
+                mobileInput={mobileInputRef}
             />
             <HUD
                 score={gameState.score}
@@ -65,6 +68,11 @@ export default function App() {
             <Overlay
                 gameState={gameState}
                 onStart={startGame}
+            />
+            <MobileControls
+                mobileInput={mobileInputRef}
+                running={gameState.running}
+                onMenu={goToMenu}
             />
         </>
     )
